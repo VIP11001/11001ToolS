@@ -205,25 +205,19 @@ function downloadData(data, format) {
         content += `"${comment.id}","${escapedUserName}","${escapedText}","${comment.create_time}",${comment.like_count},${comment.reply_count}\n`;
       });
     } else if (format === 'md') {
-      filename += '.md';
+      // 生成文件名：网页标题_正文及评论.md
+      const safeTitle = articleInfo.title.replace(/[<>:"/\\|?*]/g, '_');
+      filename = `${safeTitle}_正文及评论.md`;
       // 生成Markdown内容
-      content = `# 今日头条评论提取\n\n`;
-      content += `## 文章信息\n\n`;
-      content += `- 标题: ${articleInfo.title}\n`;
-      content += `- 链接: ${articleInfo.url}\n`;
-      content += `- 提取时间: ${new Date().toLocaleString()}\n`;
-      content += `- 评论总数: ${data.length}\n\n`;
-      content += `## 评论列表\n\n`;
+      content = `# 正文及评论\n\n`;
+      content += `## 共有评论${data.length}条\n\n`;
       
       data.forEach((comment, index) => {
-        content += `### 评论 ${index + 1}\n\n`;
-        content += `**用户名:** ${comment.user_name}\n\n`;
-        content += `**评论内容:**\n${comment.text}\n\n`;
-        if (comment.create_time) {
-          content += `**创建时间:** ${comment.create_time}\n\n`;
+        content += `${comment.text}\n\n`;
+        // 不是最后一条评论时添加分割线
+        if (index < data.length - 1) {
+          content += `---\n\n`;
         }
-        content += `**点赞数:** ${comment.like_count}  **回复数:** ${comment.reply_count}\n\n`;
-        content += `---\n\n`;
       });
     }
 
