@@ -1,30 +1,37 @@
 {
   "manifest_version": 3,
-  "name": "头条评论及正文提取器v1.0",
+  "name": "头条评论提取器v1.0",
   "version": "1.0",
-  "description": "提取今日头条文章正文及所有评论，支持导出为CSV、DOCX、MD格式",
-  "author": "Editor By 11001",
+  "description": "提取今日头条文章的评论并导出",
   "permissions": [
     "activeTab",
-    "downloads",
-    "scripting"
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://www.toutiao.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_icon": "icon.svg"
-  },
-  "background": {
-    "service_worker": "background.js"
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {
       "matches": ["https://www.toutiao.com/*"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["styles/popup.css"]
     }
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }

@@ -1,104 +1,61 @@
-// 后台脚本
-
-// 监听来自popup的消息
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === 'extractContent') {
-    // 获取当前活动标签页
-    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-      if (tabs.length > 0) {
-        const tab = tabs[0];
-        // 向内容脚本发送消息，提取内容
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          function: extractContentFromPage
-        }, function(results) {
-          if (results && results[0] && results[0].result) {
-            const content = results[0].result;
-            // 生成MD格式文件
-            const markdown = generateMarkdown(content);
-            // 下载文件
-            downloadFile(markdown, content.title + '_正文及评论.md', 'text/markdown');
-            sendResponse({ success: true });
-          } else {
-            sendResponse({ success: false, error: '无法提取内容' });
-          }
-        });
-      } else {
-        sendResponse({ success: false, error: '没有找到活动标签页' });
-      }
-    });
-    return true; // 表示异步响应
+// 监听消息
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'download') {
+    // 处理下载请求
+    downloadFile(message.filename, message.content, message.format, sendResponse);
+    // 保持消息通道开放
+    return true;
   }
 });
 
-// 从页面提取内容的函数
-function extractContentFromPage() {
-  // 提取文章标题
-  let title = document.title;
-  if (!title) {
-    const titleElement = document.querySelector('h1');
-    if (titleElement) {
-      title = titleElement.textContent.trim();
-    } else {
-      title = '未知标题';
-    }
-  }
-  
-  // 提取正文内容
-  let content = '';
-  const contentElements = document.querySelectorAll('article, .article-content, .content, #article-content');
-  if (contentElements.length > 0) {
-    contentElements.forEach(element => {
-      content += element.textContent.trim() + '\n\n';
-    });
-  } else {
-    // 尝试其他可能的选择器
-    const paragraphs = document.querySelectorAll('p');
-    paragraphs.forEach(p => {
-      content += p.textContent.trim() + '\n\n';
-    });
-  }
-  
-  // 提取评论
-  const comments = [];
-  const commentElements = document.querySelectorAll('.comment, .comment-item, .comment-content, .reply-content');
-  commentElements.forEach(element => {
-    const commentText = element.textContent.trim();
-    if (commentText) {
-      comments.push(commentText);
-    }
-  });
-  
-  return {
-    title: title,
-    content: content,
-    comments: comments
-  };
-}
-
-// 生成Markdown格式
-function generateMarkdown(data) {
-  let markdown = `# ${data.title}\n\n`;
-  markdown += `# 正文\n\n${data.content}\n`;
-  markdown += `# 评论\n\n## 共有评论${data.comments.length}条\n\n`;
-  data.comments.forEach(comment => {
-    markdown += `${comment}\n\n---\n\n`;
-  });
-  return markdown;
-}
-
 // 下载文件
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  chrome.downloads.download({
-    url: url,
-    filename: filename,
-    saveAs: false
-  }, function(downloadId) {
-    // 释放URL对象
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
-  });
+function downloadFile(filename, content, format, sendResponse) {
+  try {
+    console.log('开始下载文件:', filename);
+    console.log('文件内容长度:', content.length);
+    console.log('文件格式:', format);
+
+    // 根据格式设置正确的MIME类型
+    let mimeType = 'text/plain';
+    if (format === 'md') {
+      mimeType = 'text/markdown';
+    } else if (format === 'json') {
+      mimeType = 'application/json';
+    } else if (format === 'csv') {
+      mimeType = 'text/csv';
+    }
+
+    // 在service worker中，使用data URL的方式
+    // 对内容进行Base64编码
+    const encodedContent = btoa(unescape(encodeURIComponent(content)));
+    const dataUrl = `data:${mimeType};base64,${encodedContent}`;
+
+    // 使用chrome.downloads API下载文件
+    // saveAs: false 直接保存到默认下载目录
+    chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: false
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error('下载失败:', chrome.runtime.lastError);
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        console.log('下载成功，ID:', downloadId);
+        sendResponse({ success: true });
+      }
+    });
+  } catch (e) {
+    console.error('下载文件时出错:', e);
+    sendResponse({ success: false, error: e.message });
+  }
 }
+
+// 监听标签页更新
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // 当标签页URL变化且完成加载时
+  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('toutiao.com')) {
+    // 可以在这里添加一些逻辑，比如向content script发送消息
+    chrome.tabs.sendMessage(tabId, { action: 'page-updated' });
+  }
+});
