@@ -1,0 +1,25 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "一款用于提取今日头条文章正文及所有评论的浏览器插件，支持导出为CSV、DOCX、MD格式。",
+  "main": "background.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "zip -r extension.zip popup.html popup.js styles.css background.js manifest.json content.js icon.svg generate-crx.js README.md icon128.png icon16.png icon48.png key.pem"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VIP11001/11001ToolS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/VIP11001/11001ToolS/issues"
+  },
+  "homepage": "https://github.com/VIP11001/11001ToolS#readme",
+  "dependencies": {
+    "crx": "^5.0.1"
+  }
+}
