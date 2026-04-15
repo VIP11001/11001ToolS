@@ -292,30 +292,39 @@ async function extractCommentsFromDOM() {
 // 滚动页面加载所有评论
 async function scrollToLoadAllComments() {
   let scrollCount = 0;
-  const maxScrollCount = 10;
+  const maxScrollCount = 20; // 增加到20次
   let lastHeight = document.body.scrollHeight;
+  let noChangeCount = 0;
   
   while (scrollCount < maxScrollCount) {
     // 滚动到页面底部
     window.scrollTo(0, document.body.scrollHeight);
     
-    // 等待内容加载
-    await waitFor(2000);
+    // 等待内容加载 - 增加等待时间
+    await waitFor(3000);
     
     // 检查是否还有新内容
     const newHeight = document.body.scrollHeight;
     if (newHeight === lastHeight) {
-      console.log('页面高度不再变化，停止滚动');
-      break;
+      noChangeCount++;
+      console.log(`页面高度连续 ${noChangeCount} 次未变化`);
+      if (noChangeCount >= 3) {
+        console.log('页面高度连续3次未变化，停止滚动');
+        break;
+      }
+    } else {
+      noChangeCount = 0;
     }
     lastHeight = newHeight;
     scrollCount++;
-    console.log(`已滚动 ${scrollCount} 次`);
+    console.log(`已滚动 ${scrollCount} 次，当前高度: ${lastHeight}`);
   }
   
-  // 滚动回顶部
-  window.scrollTo(0, 0);
-  await waitFor(500);
+  // 再次滚动到底部，确保所有评论加载
+  window.scrollTo(0, document.body.scrollHeight);
+  await waitFor(2000);
+  
+  console.log('滚动加载完成');
 }
 
 // 等待函数
@@ -545,20 +554,35 @@ function parseCommentItem(item) {
 // 从所有元素中提取评论
 function extractAllComments() {
   const comments = [];
-  const allElements = document.querySelectorAll('div, p, span, article, li');
+  const allElements = document.querySelectorAll('div, p, span, article, li, section');
   const potentialComments = [];
   
+  console.log(`开始检查所有 ${allElements.length} 个元素`);
+  
   allElements.forEach(el => {
-    const text = el.textContent.trim();
-    const className = el.className.toLowerCase();
-    
-    if (text.length > 8 && text.length < 1000) {
+    try {
+      const text = el.textContent.trim();
+      const className = el.className.toLowerCase();
+      const tagName = el.tagName.toLowerCase();
+      
+      // 检查文本长度
+      if (text.length < 8 || text.length > 2000) {
+        return;
+      }
+      
       // 检查是否是评论特征
       const isComment = (
         className.includes('comment') ||
         className.includes('reply') ||
+        className.includes('discuss') ||
+        className.includes('feedback') ||
+        className.includes('comment') ||
+        className.includes('reply') ||
         (text.includes('回复') && text.length > 15) ||
-        (text.includes('赞') && text.length > 15)
+        (text.includes('赞') && text.length > 15) ||
+        (text.includes('：') && text.length > 15) ||
+        (tagName === 'p' && text.length > 20) ||
+        (tagName === 'span' && text.length > 20)
       );
       
       // 过滤掉明显不是评论的内容
@@ -576,23 +600,34 @@ function extractAllComments() {
         text.includes('今日头条') ||
         text.includes('http') ||
         text.includes('www.') ||
-        text.length < 8
+        text.includes('点击') ||
+        text.includes('查看') ||
+        text.includes('阅读') ||
+        text.includes('评论') && text.length < 20 ||
+        text.includes('回复') && text.length < 20
       );
       
       if (isComment && !isNotComment) {
         potentialComments.push({
           element: el,
-          text: text
+          text: text,
+          className: className,
+          tagName: tagName
         });
       }
+    } catch (e) {
+      console.error('处理元素时出错:', e);
     }
   });
   
+  console.log(`找到 ${potentialComments.length} 个潜在评论`);
+  
   // 去重并提取
   const seenTexts = new Set();
-  potentialComments.forEach(pc => {
-    if (!seenTexts.has(pc.text)) {
-      seenTexts.add(pc.text);
+  potentialComments.forEach((pc, index) => {
+    const normalizedText = pc.text.trim().replace(/\s+/g, ' ');
+    if (!seenTexts.has(normalizedText)) {
+      seenTexts.add(normalizedText);
       comments.push({
         id: generateId(),
         text: pc.text,
@@ -601,9 +636,13 @@ function extractAllComments() {
         like_count: 0,
         reply_count: 0
       });
+      if (index < 20) {
+        console.log(`潜在评论 ${index + 1}:`, pc.text.substring(0, 80), '...', `(tag: ${pc.tagName}, class: ${pc.className})`);
+      }
     }
   });
   
+  console.log(`从所有元素中提取到 ${comments.length} 条评论`);
   return comments;
 }
 
@@ -673,9 +712,9 @@ async function startCrawlProcess() {
     updateStatus(`从页面中获取到 ${allComments.length} 条评论`);
   }
 
-  // 2. 如果DOM提取失败且有文章ID，尝试API
-  if (allComments.length === 0 && articleInfo.article_id) {
-    updateStatus('从页面提取失败，尝试使用API...');
+  // 2. 尝试API（不管是否有DOM评论）
+  if (articleInfo.article_id) {
+    updateStatus('尝试使用API获取更多评论...');
 
     let offset = 0;
     const countPerPage = 20;
@@ -771,8 +810,13 @@ async function startCrawlProcess() {
         }
       }
     }
-  } else if (allComments.length === 0 && !articleInfo.article_id) {
-    updateStatus('无法获取文章ID，已尝试从页面提取评论');
+  }
+  
+  // 3. 尝试备用方法提取评论
+  if (allComments.length < 20) {
+    updateStatus('尝试使用备用方法提取更多评论...');
+    const backupComments = extractAllComments();
+    allComments.push(...backupComments);
   }
 
   // 去重处理
