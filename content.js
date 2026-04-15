@@ -469,10 +469,6 @@ function levenshteinDistance(a, b) {
 // 开始抓取评论
 async function startCrawlProcess() {
   const articleInfo = extractArticleInfo();
-  if (!articleInfo.article_id) {
-    updateStatus('无法获取文章ID，停止抓取');
-    return;
-  }
 
   updateStatus('开始抓取评论...');
 
@@ -485,8 +481,10 @@ async function startCrawlProcess() {
 
   if (allComments.length > 0) {
     updateStatus(`从页面中获取到 ${allComments.length} 条评论`);
-  } else {
-    // 2. 如果DOM提取失败，尝试API
+  }
+
+  // 2. 如果DOM提取失败且有文章ID，尝试API
+  if (allComments.length === 0 && articleInfo.article_id) {
     updateStatus('从页面提取失败，尝试使用API...');
 
     let offset = 0;
@@ -583,6 +581,8 @@ async function startCrawlProcess() {
         }
       }
     }
+  } else if (allComments.length === 0 && !articleInfo.article_id) {
+    updateStatus('无法获取文章ID，已尝试从页面提取评论');
   }
 
   // 去重处理
