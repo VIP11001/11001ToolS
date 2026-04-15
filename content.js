@@ -255,15 +255,19 @@ function downloadData(data, format) {
 }
 
 // 从页面DOM中提取评论
-function extractCommentsFromDOM() {
+async function extractCommentsFromDOM() {
   const comments = [];
   console.log('开始从DOM中提取评论');
 
-  // 1. 尝试找到评论容器
+  // 1. 先滚动页面加载所有评论
+  console.log('开始滚动页面加载评论...');
+  await scrollToLoadAllComments();
+
+  // 2. 尝试找到评论容器
   const commentContainers = findCommentContainers();
   console.log(`找到 ${commentContainers.length} 个评论容器`);
 
-  // 2. 如果找到评论容器，从容器中提取评论
+  // 3. 如果找到评论容器，从容器中提取评论
   if (commentContainers.length > 0) {
     commentContainers.forEach(container => {
       const extractedComments = extractCommentsFromContainer(container);
@@ -271,15 +275,52 @@ function extractCommentsFromDOM() {
     });
   }
 
-  // 3. 如果没有找到评论，尝试备用方法
-  if (comments.length === 0) {
-    console.log('尝试备用方法提取评论...');
-    const backupComments = extractCommentsBackup();
-    comments.push(...backupComments);
+  // 4. 尝试从所有可能的元素中提取评论
+  if (comments.length < 10) {
+    console.log('尝试从所有元素中提取评论...');
+    const allComments = extractAllComments();
+    comments.push(...allComments);
   }
 
-  console.log('从DOM中提取完成，共获取到', comments.length, '条评论');
-  return comments;
+  // 5. 去重
+  const uniqueComments = deduplicateComments(comments);
+  
+  console.log('从DOM中提取完成，共获取到', uniqueComments.length, '条评论');
+  return uniqueComments;
+}
+
+// 滚动页面加载所有评论
+async function scrollToLoadAllComments() {
+  let scrollCount = 0;
+  const maxScrollCount = 10;
+  let lastHeight = document.body.scrollHeight;
+  
+  while (scrollCount < maxScrollCount) {
+    // 滚动到页面底部
+    window.scrollTo(0, document.body.scrollHeight);
+    
+    // 等待内容加载
+    await waitFor(2000);
+    
+    // 检查是否还有新内容
+    const newHeight = document.body.scrollHeight;
+    if (newHeight === lastHeight) {
+      console.log('页面高度不再变化，停止滚动');
+      break;
+    }
+    lastHeight = newHeight;
+    scrollCount++;
+    console.log(`已滚动 ${scrollCount} 次`);
+  }
+  
+  // 滚动回顶部
+  window.scrollTo(0, 0);
+  await waitFor(500);
+}
+
+// 等待函数
+function waitFor(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // 寻找评论容器
@@ -291,7 +332,11 @@ function findCommentContainers() {
     '[class*="comments"]',
     '[id*="comment"]',
     '[class*="reply-list"]',
-    '[class*="replyList"]'
+    '[class*="replyList"]',
+    '[class*="discuss"]',
+    '[class*="feedback"]',
+    '[class*="comment-wrapper"]',
+    '[class*="commentWrapper"]'
   ];
   
   selectors.forEach(selector => {
@@ -309,19 +354,48 @@ function findCommentContainers() {
 // 从评论容器中提取评论
 function extractCommentsFromContainer(container) {
   const comments = [];
-  const commentItems = container.querySelectorAll('[class*="comment-item"], [class*="commentItem"], [class*="reply-item"], [class*="replyItem"]');
   
-  console.log(`在容器中找到 ${commentItems.length} 个评论项`);
+  // 尝试多种评论项选择器
+  const commentItemSelectors = [
+    '[class*="comment-item"]',
+    '[class*="commentItem"]',
+    '[class*="reply-item"]',
+    '[class*="replyItem"]',
+    '[class*="comment-entity"]',
+    '[class*="commentEntity"]',
+    '[class*="comment-row"]',
+    '[class*="commentRow"]',
+    'li[class*="comment"]',
+    'div[class*="comment"]',
+    'article[class*="comment"]'
+  ];
   
-  commentItems.forEach((item, index) => {
+  let commentItems = [];
+  for (const selector of commentItemSelectors) {
+    const items = container.querySelectorAll(selector);
+    if (items.length > 0) {
+      commentItems = items;
+      console.log(`使用选择器 ${selector} 找到 ${items.length} 个评论项`);
+      break;
+    }
+  }
+  
+  // 如果还是没找到，尝试容器的直接子元素
+  if (commentItems.length === 0) {
+    commentItems = container.children;
+    console.log(`尝试使用容器直接子元素，共 ${commentItems.length} 个`);
+  }
+  
+  // 解析评论项
+  Array.from(commentItems).forEach((item, index) => {
     try {
       const comment = parseCommentItem(item);
-      if (comment && comment.text && comment.text.length > 10) {
+      if (comment && comment.text && comment.text.length > 5) {
         // 检查是否重复
         const isDuplicate = comments.some(c => c.text === comment.text);
         if (!isDuplicate) {
           comments.push(comment);
-          console.log(`提取到评论 ${index + 1}:`, comment.text.substring(0, 50), '...');
+          console.log(`提取到评论 ${comments.length}:`, comment.text.substring(0, 60), '...');
         }
       }
     } catch (e) {
@@ -343,32 +417,67 @@ function parseCommentItem(item) {
     reply_count: 0
   };
   
-  // 提取评论文本
+  // 提取评论文本 - 尝试多种选择器
   const textSelectors = [
     '[class*="comment-content"]',
     '[class*="commentContent"]',
     '[class*="content-text"]',
     '[class*="contentText"]',
-    'p'
+    '[class*="comment-text"]',
+    '[class*="commentText"]',
+    '[class*="text-content"]',
+    '[class*="textContent"]',
+    'p[class*="text"]',
+    'span[class*="text"]',
+    'div[class*="text"]',
+    'p',
+    'span'
   ];
   
   for (const selector of textSelectors) {
     const el = item.querySelector(selector);
     if (el) {
       const text = el.textContent.trim();
-      if (text.length > 10) {
+      if (text.length > 5 && text.length < 2000) {
         comment.text = text;
         break;
       }
     }
   }
   
-  // 如果没有找到，尝试直接获取item的文本
+  // 如果没有找到，尝试获取item的文本
   if (!comment.text) {
     const text = item.textContent.trim();
-    if (text.length > 10 && text.length < 500) {
+    if (text.length > 5 && text.length < 2000) {
       comment.text = text;
     }
+  }
+  
+  // 如果还是没找到，跳过这个评论
+  if (!comment.text) {
+    return null;
+  }
+  
+  // 过滤掉明显不是评论的内容
+  const isNotComment = (
+    comment.text.includes('广告') ||
+    comment.text.includes('推广') ||
+    comment.text.includes('关注') ||
+    comment.text.includes('收藏') ||
+    comment.text.includes('分享') ||
+    comment.text.includes('下载') ||
+    comment.text.includes('安装') ||
+    comment.text.includes('注册') ||
+    comment.text.includes('登录') ||
+    comment.text.includes('头条') ||
+    comment.text.includes('今日头条') ||
+    comment.text.includes('http') ||
+    comment.text.includes('www.') ||
+    comment.text.length < 8
+  );
+  
+  if (isNotComment) {
+    return null;
   }
   
   // 提取用户名
@@ -376,14 +485,16 @@ function parseCommentItem(item) {
     '[class*="user-name"]',
     '[class*="userName"]',
     '[class*="nickname"]',
-    '[class*="author"]'
+    '[class*="author"]',
+    '[class*="user"]',
+    '[class*="name"]'
   ];
   
   for (const selector of userSelectors) {
     const el = item.querySelector(selector);
     if (el) {
       const text = el.textContent.trim();
-      if (text && text.length < 50) {
+      if (text && text.length < 50 && !text.includes('回复') && !text.includes('赞')) {
         comment.user_name = text;
         break;
       }
@@ -394,7 +505,8 @@ function parseCommentItem(item) {
   const timeSelectors = [
     '[class*="time"]',
     '[class*="date"]',
-    '[class*="publish-time"]'
+    '[class*="publish-time"]',
+    '[class*="create-time"]'
   ];
   
   for (const selector of timeSelectors) {
@@ -410,7 +522,9 @@ function parseCommentItem(item) {
     '[class*="like-count"]',
     '[class*="likeCount"]',
     '[class*="digg-count"]',
-    '[class*="praise"]'
+    '[class*="praise"]',
+    '[class*="like"]',
+    '[class*="digg"]'
   ];
   
   for (const selector of likeSelectors) {
@@ -428,27 +542,23 @@ function parseCommentItem(item) {
   return comment;
 }
 
-// 备用评论提取方法
-function extractCommentsBackup() {
+// 从所有元素中提取评论
+function extractAllComments() {
   const comments = [];
-  console.log('使用备用方法提取评论');
-  
-  // 寻找所有可能包含评论的元素
-  const allElements = document.querySelectorAll('div, p, span');
+  const allElements = document.querySelectorAll('div, p, span, article, li');
   const potentialComments = [];
   
   allElements.forEach(el => {
     const text = el.textContent.trim();
     const className = el.className.toLowerCase();
     
-    // 更严格的条件
-    if (text.length > 15 && text.length < 500) {
+    if (text.length > 8 && text.length < 1000) {
       // 检查是否是评论特征
       const isComment = (
         className.includes('comment') ||
         className.includes('reply') ||
-        (text.includes('回复') && text.length > 20) ||
-        (text.includes('赞') && text.length > 20)
+        (text.includes('回复') && text.length > 15) ||
+        (text.includes('赞') && text.length > 15)
       );
       
       // 过滤掉明显不是评论的内容
@@ -465,7 +575,8 @@ function extractCommentsBackup() {
         text.includes('头条') ||
         text.includes('今日头条') ||
         text.includes('http') ||
-        text.includes('www.')
+        text.includes('www.') ||
+        text.length < 8
       );
       
       if (isComment && !isNotComment) {
@@ -494,6 +605,22 @@ function extractCommentsBackup() {
   });
   
   return comments;
+}
+
+// 评论去重
+function deduplicateComments(comments) {
+  const uniqueComments = [];
+  const seenTexts = new Set();
+  
+  comments.forEach(comment => {
+    const normalizedText = comment.text.trim().replace(/\s+/g, ' ');
+    if (!seenTexts.has(normalizedText)) {
+      seenTexts.add(normalizedText);
+      uniqueComments.push(comment);
+    }
+  });
+  
+  return uniqueComments;
 }
 
 // 计算字符串相似度的辅助函数（Levenshtein距离）
@@ -539,7 +666,7 @@ async function startCrawlProcess() {
 
   // 1. 尝试从DOM中提取评论
   updateStatus('尝试从页面中提取评论...');
-  const domComments = extractCommentsFromDOM();
+  const domComments = await extractCommentsFromDOM();
   allComments.push(...domComments);
 
   if (allComments.length > 0) {
