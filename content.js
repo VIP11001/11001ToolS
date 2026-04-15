@@ -9,26 +9,74 @@ function extractArticleInfo() {
 
   // 提取文章ID
   let article_id = '';
-  // 从URL中提取
-  const urlMatch = window.location.href.match(/(group|item)_id=([^&]+)/);
-  if (urlMatch && urlMatch[2]) {
-    article_id = urlMatch[2];
-  }
-  // 从页面中提取
-  if (!article_id) {
-    const metaElement = document.querySelector('meta[name="_oid"]');
-    if (metaElement) {
-      article_id = metaElement.content;
+  
+  // 1. 从URL中提取多种可能的模式
+  const urlPatterns = [
+    /(group|item)_id=([^&]+)/,
+    /\/a(\d+)\//,
+    /\/article\/(\d+)/,
+    /group_id['"]?\s*[:=]\s*['"]?(\d+)/,
+    /item_id['"]?\s*[:=]\s*['"]?(\d+)/
+  ];
+  
+  for (const pattern of urlPatterns) {
+    const urlMatch = window.location.href.match(pattern);
+    if (urlMatch && urlMatch[1] || urlMatch && urlMatch[2]) {
+      article_id = urlMatch[1] || urlMatch[2];
+      console.log('从URL提取到文章ID:', article_id);
+      break;
     }
   }
-  // 从script标签中提取
+  
+  // 2. 从页面meta标签中提取
+  if (!article_id) {
+    const metaSelectors = [
+      'meta[name="_oid"]',
+      'meta[name="articleId"]',
+      'meta[property="article:id"]'
+    ];
+    for (const selector of metaSelectors) {
+      const metaElement = document.querySelector(selector);
+      if (metaElement && metaElement.content) {
+        article_id = metaElement.content;
+        console.log('从meta标签提取到文章ID:', article_id);
+        break;
+      }
+    }
+  }
+  
+  // 3. 从script标签中提取多种模式
   if (!article_id) {
     const scriptElements = document.querySelectorAll('script');
+    const scriptPatterns = [
+      /article_id["']\s*:\s*["']?(\d+)["']?/,
+      /group_id["']\s*:\s*["']?(\d+)["']?/,
+      /item_id["']\s*:\s*["']?(\d+)["']?/,
+      /id["']\s*:\s*["']?(\d+)["']?.*?article/,
+      /article.*?id["']\s*:\s*["']?(\d+)["']?/
+    ];
+    
     for (const script of scriptElements) {
       const scriptContent = script.textContent;
-      const match = scriptContent.match(/article_id["']\s*:\s*["']([^"']+)["']/);
-      if (match && match[1]) {
-        article_id = match[1];
+      for (const pattern of scriptPatterns) {
+        const match = scriptContent.match(pattern);
+        if (match && match[1]) {
+          article_id = match[1];
+          console.log('从script标签提取到文章ID:', article_id);
+          break;
+        }
+      }
+      if (article_id) break;
+    }
+  }
+  
+  // 4. 从页面数据属性中提取
+  if (!article_id) {
+    const dataElements = document.querySelectorAll('[data-article-id], [data-group-id], [data-item-id]');
+    for (const el of dataElements) {
+      article_id = el.dataset.articleId || el.dataset.groupId || el.dataset.itemId;
+      if (article_id) {
+        console.log('从data属性提取到文章ID:', article_id);
         break;
       }
     }
@@ -605,15 +653,17 @@ async function startCrawlProcess() {
   // 保存评论数据到全局变量
   window.toutiaoComments = uniqueComments;
 
-  // 更新导出按钮状态
-  document.getElementById('export-json').disabled = false;
-  document.getElementById('export-csv').disabled = false;
-  document.getElementById('export-md').disabled = false;
+  // 更新导出按钮状态 - 只要有评论就启用导出
+  if (uniqueComments.length > 0) {
+    document.getElementById('export-json').disabled = false;
+    document.getElementById('export-csv').disabled = false;
+    document.getElementById('export-md').disabled = false;
 
-  // 抓取完成后自动导出为MD文件
-  setTimeout(() => {
-    downloadData(uniqueComments, 'md');
-  }, 1000);
+    // 抓取完成后自动导出为MD文件
+    setTimeout(() => {
+      downloadData(uniqueComments, 'md');
+    }, 1000);
+  }
 }
 
 // 更新状态信息
