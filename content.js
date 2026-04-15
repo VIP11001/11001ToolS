@@ -690,6 +690,40 @@ function updateStatus(message) {
   console.log('Status:', message);
 }
 
+// 创建圆形图标
+function createFloatingIcon() {
+  // 检查是否已经存在图标
+  if (document.getElementById('toutiao-comment-scraper-icon')) {
+    return;
+  }
+
+  // 创建圆形图标
+  const icon = document.createElement('div');
+  icon.id = 'toutiao-comment-scraper-icon';
+  icon.className = 'toutiao-comment-scraper-icon';
+  icon.textContent = '评';
+  
+  // 添加到页面
+  document.body.appendChild(icon);
+  
+  // 绑定点击事件
+  icon.addEventListener('click', () => {
+    const panel = document.getElementById('toutiao-comment-scraper');
+    if (panel) {
+      if (panel.style.display === 'none' || panel.style.display === '') {
+        panel.style.display = 'block';
+        icon.style.display = 'none';
+      } else {
+        panel.style.display = 'none';
+        icon.style.display = 'flex';
+      }
+    }
+  });
+  
+  // 添加拖拽功能
+  makeDraggable(icon);
+}
+
 // 创建控制面板
 function createControlPanel() {
   // 检查是否已经存在控制面板
@@ -706,7 +740,7 @@ function createControlPanel() {
   panel.innerHTML = `
     <div class="scraper-header" id="scraper-header">
       <h3>头条评论提取器</h3>
-      <button id="toggle-panel" class="toggle-btn">▼</button>
+      <button id="toggle-panel" class="toggle-btn">×</button>
     </div>
     <div class="scraper-content" id="scraper-content">
       <div class="scraper-info">
@@ -732,7 +766,13 @@ function createControlPanel() {
   document.body.appendChild(panel);
 
   // 绑定事件
-  document.getElementById('toggle-panel').addEventListener('click', togglePanel);
+  document.getElementById('toggle-panel').addEventListener('click', () => {
+    const icon = document.getElementById('toutiao-comment-scraper-icon');
+    panel.style.display = 'none';
+    if (icon) {
+      icon.style.display = 'flex';
+    }
+  });
   document.getElementById('start-crawl').addEventListener('click', startCrawlProcess);
   document.getElementById('export-json').addEventListener('click', () => downloadData(window.toutiaoComments || [], 'json'));
   document.getElementById('export-csv').addEventListener('click', () => downloadData(window.toutiaoComments || [], 'csv'));
@@ -792,12 +832,15 @@ function makeDraggable(element) {
 
 // 初始化插件
 function initPlugin() {
-  // 检查是否已经存在控制面板
-  if (document.getElementById('toutiao-comment-scraper')) {
+  // 检查是否已经存在图标
+  if (document.getElementById('toutiao-comment-scraper-icon')) {
     return;
   }
 
-  // 创建控制面板
+  // 先创建圆形图标
+  createFloatingIcon();
+  
+  // 再创建控制面板（默认隐藏）
   createControlPanel();
 
   // 自动提取文章信息
@@ -805,9 +848,6 @@ function initPlugin() {
   if (articleInfo) {
     updateStatus(`已识别文章: ${articleInfo.title}`);
   }
-
-  // 自动开始抓取
-  startCrawlProcess();
 }
 
 // 页面加载完成后初始化插件

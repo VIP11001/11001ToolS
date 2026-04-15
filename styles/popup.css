@@ -1,3 +1,29 @@
+/* 圆形图标按钮 */
+.toutiao-comment-scraper-icon {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  background-color: rgba(255, 107, 0, 0.7);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.toutiao-comment-scraper-icon:hover {
+  background-color: rgba(255, 107, 0, 0.9);
+  transform: scale(1.1);
+}
+
 /* 控制面板样式 */
 .toutiao-comment-scraper {
   position: fixed;
@@ -10,6 +36,7 @@
   z-index: 9999;
   font-family: Arial, sans-serif;
   overflow: hidden;
+  display: none;
 }
 
 /* 控制面板头部 */
