@@ -17,11 +17,9 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
       if (tabs.length > 0) {
         const tab = tabs[0];
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          function: startCrawlProcess
-        }, function(results) {
-          if (results && results[0] && results[0].result) {
+        // 向content script发送消息，触发提取
+        chrome.tabs.sendMessage(tab.id, { action: 'extractContent' }, function(response) {
+          if (response && response.success) {
             sendResponse({ success: true });
           } else {
             sendResponse({ success: false, error: '提取失败' });
@@ -50,16 +48,4 @@ function downloadFile(content, filename, mimeType) {
       URL.revokeObjectURL(url);
     }, 1000);
   });
-}
-
-// 提取内容的函数（当从popup触发时使用）
-function startCrawlProcess() {
-  // 这里的逻辑会在content script中执行
-  // 由于我们已经在content.js中实现了完整的提取逻辑
-  // 这里只需要调用content.js中的startCrawlProcess函数
-  if (typeof startCrawlProcess === 'function') {
-    startCrawlProcess();
-    return { success: true };
-  }
-  return { success: false };
 }
